@@ -112,6 +112,16 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  
+  // FFmpeg-Kit for video processing
+  implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
+  
+  // MediaPipe for face/pose detection
+  implementation("com.google.mediapipe:tasks-vision:0.10.14")
+  
+  // WorkManager for background video processing
+  implementation("androidx.work:work-runtime-ktx:2.9.0")
+  
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
