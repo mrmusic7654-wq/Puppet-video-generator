@@ -1,0 +1,8 @@
+# MediaPipe model files should be downloaded here:
+# 1. face_detection_short_range.tflite
+#    Download from: https://storage.googleapis.com/mediapipe-models/face_detector/face_detection_short_range/float16/1/face_detection_short_range.tflite
+#
+# 2. pose_landmarker_lite.task
+#    Download from: https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task
+#
+# Place these files in this directory for the PuppetTracker to work.

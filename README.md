@@ -15,6 +15,8 @@ Puppet Studio is an Android application that leverages AI to transform your phot
 - 🎭 **AI-Powered Script Generation**: Automatically create engaging scripts from your photos
 - 🎬 **Puppet-Style Video Creation**: Transform static images into animated puppet videos
 - 🤖 **Gemini AI Integration**: Powered by Google's advanced Gemini AI models
+- 🎥 **FFmpeg Video Processing**: Professional video encoding with transitions and effects
+- 👤 **MediaPipe Face & Pose Tracking**: Detect faces and body poses for puppet animation
 - 📱 **Modern Android UI**: Built with Jetpack Compose for a smooth user experience
 - 🔒 **Secure API Key Management**: Environment-based configuration for API keys
 
@@ -23,6 +25,8 @@ Puppet Studio is an Android application that leverages AI to transform your phot
 - **Language**: Kotlin
 - **UI Framework**: Jetpack Compose
 - **AI Backend**: Firebase AI (Gemini)
+- **Video Processing**: FFmpeg-Kit
+- **Face/Pose Detection**: MediaPipe
 - **Architecture**: MVVM with ViewModel
 - **Dependency Injection**: Manual DI
 - **Build System**: Gradle (Kotlin DSL)
@@ -40,8 +44,12 @@ puppetmaster-ai/
 │   │   │   │   ├── api/          # API services (GeminiApiService)
 │   │   │   │   ├── data/         # Data models
 │   │   │   │   ├── ui/theme/     # App theme (Color, Type, Theme)
+│   │   │   │   ├── video/        # Video processing & puppet tracking
+│   │   │   │   │   ├── VideoProcessingService.kt  # FFmpeg video creation
+│   │   │   │   │   └── PuppetTracker.kt           # MediaPipe face/pose detection
 │   │   │   │   ├── MainActivity.kt
 │   │   │   │   └── MainViewModel.kt
+│   │   │   ├── assets/           # MediaPipe model files
 │   │   │   ├── res/              # Android resources
 │   │   │   └── AndroidManifest.xml
 │   │   ├── test/                 # Unit tests
@@ -96,7 +104,25 @@ GEMINI_API_KEY=your_actual_gemini_api_key_here
 
 > **Note**: Never commit your `.env` file to version control. The `.env.example` file is provided as a template.
 
-### 3. Configure Signing (Optional)
+### 3. Download MediaPipe Models
+
+The PuppetTracker requires two model files to be placed in `app/src/main/assets/`:
+
+1. **Face Detection Model** (`face_detection_short_range.tflite`)
+   ```bash
+   wget https://storage.googleapis.com/mediapipe-models/face_detector/face_detection_short_range/float16/1/face_detection_short_range.tflite \
+     -O app/src/main/assets/face_detection_short_range.tflite
+   ```
+
+2. **Pose Landmarker Model** (`pose_landmarker_lite.task`)
+   ```bash
+   wget https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task \
+     -O app/src/main/assets/pose_landmarker_lite.task
+   ```
+
+Alternatively, you can download these files manually from the MediaPipe website and place them in the assets directory.
+
+### 4. Configure Signing (Optional)
 
 For debug builds, no additional configuration is needed. For release builds:
 
@@ -107,7 +133,8 @@ For debug builds, no additional configuration is needed. For release builds:
 
 2. Or modify `app/build.gradle.kts` to use your preferred signing configuration
 
-### 4. Build and Run
+
+### 5. Build and Run
 
 1. Connect an Android device or start an emulator
 2. Click **Run** in Android Studio or execute:
@@ -133,6 +160,9 @@ Key dependencies include:
 - `coil`: Image loading
 - `moshi`: JSON serialization
 - `room`: Local database
+- `ffmpeg-kit-full`: FFmpeg video processing
+- `mediapipe-tasks-vision`: MediaPipe face and pose detection
+- `work-runtime-ktx`: WorkManager for background tasks
 
 ## Testing
 
