@@ -32,6 +32,49 @@ jobs:
       - name: Make Wrapper Executable
         run: chmod +x gradlew
 
+      - name: Create Required Directories and Files
+        run: |
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/xml
+          
+          # Create strings.xml
+          cat > app/src/main/res/values/strings.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">Puppet Studio</string>
+          </resources>
+          EOF
+          
+          # Create styles.xml
+          cat > app/src/main/res/values/styles.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="Theme.PuppetStudio" parent="android:Theme.Material.Light.NoActionBar">
+                  <item name="android:statusBarColor">@android:color/transparent</item>
+              </style>
+          </resources>
+          EOF
+          
+          # Create network_security_config.xml
+          cat > app/src/main/res/xml/network_security_config.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <domain-config cleartextTrafficPermitted="false">
+                  <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+                  <domain includeSubdomains="true">firebaseio.com</domain>
+              </domain-config>
+          </network-security-config>
+          EOF
+          
+          # Create file_paths.xml
+          cat > app/src/main/res/xml/file_paths.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths>
+              <external-path name="external" path="." />
+              <cache-path name="cache" path="." />
+          </paths>
+          EOF
+
       - name: Disable Firebase
         run: |
           sed -i '/com.google.gms.google-services/d' app/build.gradle.kts
