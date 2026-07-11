@@ -15,16 +15,8 @@ class PuppetTracker(context: Context) {
     private var faceDetector: FaceDetector? = null
     private var poseLandmarker: PoseLandmarker? = null
     
-    data class FaceData(
-        val boundingBox: RectF,
-        val keypoints: List<PointF>,
-        val confidence: Float
-    )
-    
-    data class PoseData(
-        val landmarks: List<PointF>,
-        val confidence: Float
-    )
+    // Use the data classes from Models.kt instead of defining them here
+    // These are kept for backward compatibility but should be removed in favor of Models.kt versions
     
     init {
         setupFaceDetector(context)
@@ -97,12 +89,12 @@ class PuppetTracker(context: Context) {
         }
     }
     
-    fun detectFace(bitmap: Bitmap): FaceData? {
+    fun detectFace(bitmap: Bitmap): com.example.data.FaceData? {
         try {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = faceDetector?.detect(mpImage)
             return result?.detections()?.firstOrNull()?.let { detection ->
-                FaceData(
+                com.example.data.FaceData(
                     boundingBox = detection.boundingBox(),
                     keypoints = detection.keypoints().map { 
                         PointF(it.x(), it.y()) 
@@ -116,12 +108,12 @@ class PuppetTracker(context: Context) {
         }
     }
     
-    fun detectPose(bitmap: Bitmap): PoseData? {
+    fun detectPose(bitmap: Bitmap): com.example.data.PoseData? {
         try {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = poseLandmarker?.detect(mpImage)
             return result?.landmarks()?.firstOrNull()?.let { landmarks ->
-                PoseData(
+                com.example.data.PoseData(
                     landmarks = landmarks.map { 
                         PointF(it.x(), it.y()) 
                     },
@@ -135,12 +127,12 @@ class PuppetTracker(context: Context) {
     }
     
     fun createPuppetAnimation(
-        faceData: FaceData,
-        poseData: PoseData,
+        faceData: com.example.data.FaceData,
+        poseData: com.example.data.PoseData,
         expression: String // From Gemini AI: "happy", "sad", "surprised"
-    ): PuppetAnimation {
+    ): com.example.data.PuppetAnimation {
         // Generate puppet animation parameters based on face/pose tracking
-        return PuppetAnimation(
+        return com.example.data.PuppetAnimation(
             mouthOpen = expression == "surprised",
             eyeScale = if (expression == "happy") 1.2f else 1.0f,
             headTilt = poseData.landmarks.getOrNull(0)?.x?.minus(poseData.landmarks.getOrNull(11)?.x ?: 0f) ?: 0f,
@@ -148,7 +140,7 @@ class PuppetTracker(context: Context) {
         )
     }
     
-    private fun calculateBodyRotation(poseData: PoseData): Float {
+    private fun calculateBodyRotation(poseData: com.example.data.PoseData): Float {
         val leftShoulder = poseData.landmarks.getOrNull(11) ?: return 0f
         val rightShoulder = poseData.landmarks.getOrNull(12) ?: return 0f
         val dx = rightShoulder.x - leftShoulder.x
@@ -161,10 +153,3 @@ class PuppetTracker(context: Context) {
         poseLandmarker?.close()
     }
 }
-
-data class PuppetAnimation(
-    val mouthOpen: Boolean,
-    val eyeScale: Float,
-    val headTilt: Float,
-    val bodyRotation: Float
-)
