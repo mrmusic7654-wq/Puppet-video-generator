@@ -1,0 +1,49 @@
+```
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log Files
+*.log
+
+# Android Studio generated files
+captures/
+*.hprof
+*.version
+*.db
+
+# Code coverage
+coverage/
+*.ec
+
+# Unit test results
+test-results/
+*.xml
+
+# Environment specific files
+.env
+.env.local
+.env.*
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Python related (if any Python scripts exist in the project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+```

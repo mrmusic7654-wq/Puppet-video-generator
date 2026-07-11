@@ -1,0 +1,6 @@
+{
+  "name": "Puppet Studio",
+  "description": "An AI-powered video editor that generates scripts and creates puppet-style videos from your photos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
