@@ -97,10 +97,11 @@ class PuppetTracker(context: Context) {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = faceDetector?.detect(mpImage)
             return result?.detections()?.firstOrNull()?.let { detection ->
+                val keypointsList = detection.keypoints().orElse(emptyList())
                 FaceData(
                     boundingBox = detection.boundingBox(),
-                    keypoints = detection.keypoints().map { 
-                        PointF(it.x(), it.y()) 
+                    keypoints = keypointsList.mapNotNull { 
+                        it.x().flatMap { x -> it.y().map { y -> PointF(x, y) } }.orElse(null)
                     },
                     confidence = detection.categories().firstOrNull()?.score() ?: 0f
                 )
