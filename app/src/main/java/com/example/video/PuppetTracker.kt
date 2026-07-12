@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.RectF
+import com.example.data.FaceData
+import com.example.data.PoseData
+import com.example.data.PuppetAnimation
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
@@ -89,12 +92,12 @@ class PuppetTracker(context: Context) {
         }
     }
     
-    fun detectFace(bitmap: Bitmap): com.example.data.FaceData? {
+    fun detectFace(bitmap: Bitmap): FaceData? {
         try {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = faceDetector?.detect(mpImage)
             return result?.detections()?.firstOrNull()?.let { detection ->
-                com.example.data.FaceData(
+                FaceData(
                     boundingBox = detection.boundingBox(),
                     keypoints = detection.keypoints().map { 
                         PointF(it.x(), it.y()) 
@@ -108,12 +111,12 @@ class PuppetTracker(context: Context) {
         }
     }
     
-    fun detectPose(bitmap: Bitmap): com.example.data.PoseData? {
+    fun detectPose(bitmap: Bitmap): PoseData? {
         try {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = poseLandmarker?.detect(mpImage)
             return result?.landmarks()?.firstOrNull()?.let { landmarks ->
-                com.example.data.PoseData(
+                PoseData(
                     landmarks = landmarks.map { 
                         PointF(it.x(), it.y()) 
                     },
@@ -127,12 +130,12 @@ class PuppetTracker(context: Context) {
     }
     
     fun createPuppetAnimation(
-        faceData: com.example.data.FaceData,
-        poseData: com.example.data.PoseData,
+        faceData: FaceData,
+        poseData: PoseData,
         expression: String // From Gemini AI: "happy", "sad", "surprised"
-    ): com.example.data.PuppetAnimation {
+    ): PuppetAnimation {
         // Generate puppet animation parameters based on face/pose tracking
-        return com.example.data.PuppetAnimation(
+        return PuppetAnimation(
             mouthOpen = expression == "surprised",
             eyeScale = if (expression == "happy") 1.2f else 1.0f,
             headTilt = poseData.landmarks.getOrNull(0)?.x?.minus(poseData.landmarks.getOrNull(11)?.x ?: 0f) ?: 0f,
@@ -140,7 +143,7 @@ class PuppetTracker(context: Context) {
         )
     }
     
-    private fun calculateBodyRotation(poseData: com.example.data.PoseData): Float {
+    private fun calculateBodyRotation(poseData: PoseData): Float {
         val leftShoulder = poseData.landmarks.getOrNull(11) ?: return 0f
         val rightShoulder = poseData.landmarks.getOrNull(12) ?: return 0f
         val dx = rightShoulder.x - leftShoulder.x
