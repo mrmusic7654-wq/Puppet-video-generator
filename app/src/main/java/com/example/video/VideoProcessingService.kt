@@ -2,10 +2,18 @@ package com.example.video
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.media.MediaMuxer
+import android.media.MediaMuxer.OutputFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 
 data class Subtitle(
     val text: String,
@@ -20,166 +28,231 @@ class VideoProcessingService(private val context: Context) {
         val width: Int = 1080,
         val height: Int = 1920,
         val frameRate: Int = 30,
-        val bitrate: String = "2M",
-        val duration: Float = 3.0f, // seconds per image
+        val durationPerImage: Float = 3.0f, // seconds per image
         val transitionEffect: TransitionEffect = TransitionEffect.FADE
     )
     
     enum class TransitionEffect {
-        FADE, SLIDE, ZOOM, NONE
+        FADE, ZOOM, SLIDE, NONE
     }
     
     suspend fun createVideoFromImages(
         images: List<Bitmap>,
-        audioPath: String? = null,
         subtitles: List<Subtitle>? = null,
         config: VideoConfig
     ): Result<File> = withContext(Dispatchers.IO) {
         try {
-            // Save images to temp directory
-            val tempDir = File(context.cacheDir, "puppet_temp")
-            tempDir.mkdirs()
+            val outputFile = File(config.outputPath)
+            outputFile.parentFile?.mkdirs()
             
-            // Clean up old temp files
-            tempDir.listFiles()?.forEach { it.delete() }
+            // Prepare MediaMuxer for output
+            val muxer = MediaMuxer(
+                config.outputPath,
+                OutputFormat.MUXER_OUTPUT_MPEG_4
+            )
             
-            val imageFiles = images.mapIndexed { index, bitmap ->
-                val file = File(tempDir, "frame_$index.png")
-                FileOutputStream(file).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                }
-                file.absolutePath
+            // Configure video encoder
+            val videoFormat = MediaFormat.createVideoFormat(
+                MediaFormat.MIMETYPE_VIDEO_AVC,
+                config.width,
+                config.height
+            ).apply {
+                setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
+                setInteger(MediaFormat.KEY_FRAME_RATE, config.frameRate)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                setInteger(
+                    MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+                )
             }
             
-            // Build FFmpeg command
-            val command = buildFFmpegCommand(imageFiles, audioPath, subtitles, config)
+            val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            encoder.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             
-            // Execute FFmpeg using the session-based approach for better error handling
-            val session = com.arthenica.ffmpegkit.FFmpegKit.execute(command)
-            val returnCode = session.returnCode
+            val inputSurface = encoder.createInputSurface()
+            encoder.start()
             
-            if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(returnCode)) {
-                val outputFile = File(config.outputPath)
-                if (outputFile.exists()) {
-                    Result.success(outputFile)
-                } else {
-                    Result.failure(Exception("Output file was not created"))
+            var trackIndex = -1
+            var muxerStarted = false
+            
+            // Process each image
+            images.forEachIndexed { index, bitmap ->
+                // Scale bitmap to video dimensions
+                val scaledBitmap = Bitmap.createScaledBitmap(
+                    bitmap,
+                    config.width,
+                    config.height,
+                    true
+                )
+                
+                // Calculate frames for this image
+                val totalFrames = (config.durationPerImage * config.frameRate).toInt()
+                
+                for (frame in 0 until totalFrames) {
+                    val progress = frame.toFloat() / totalFrames
+                    
+                    // Apply transition effects
+                    val processedBitmap = applyTransitionEffect(
+                        scaledBitmap,
+                        config.transitionEffect,
+                        progress,
+                        index > 0
+                    )
+                    
+                    // Add subtitles if available
+                    val finalBitmap = if (subtitles != null) {
+                        addSubtitles(processedBitmap, subtitles, frame, totalFrames, index)
+                    } else {
+                        processedBitmap
+                    }
+                    
+                    // Draw frame to encoder surface
+                    val canvas = inputSurface.lockCanvas(null)
+                    canvas.drawBitmap(finalBitmap, 0f, 0f, null)
+                    inputSurface.unlockCanvasAndPost(canvas)
+                    
+                    // Get encoded data
+                    val bufferInfo = MediaCodec.BufferInfo()
+                    var outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+                    
+                    while (outputBufferId >= 0) {
+                        val outputBuffer = encoder.getOutputBuffer(outputBufferId)
+                        
+                        if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+                            encoder.releaseOutputBuffer(outputBufferId, false)
+                            outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+                            continue
+                        }
+                        
+                        if (bufferInfo.size != 0) {
+                            if (!muxerStarted) {
+                                trackIndex = muxer.addTrack(encoder.outputFormat)
+                                muxer.start()
+                                muxerStarted = true
+                            }
+                            
+                            outputBuffer?.position(bufferInfo.offset)
+                            outputBuffer?.limit(bufferInfo.offset + bufferInfo.size)
+                            muxer.writeSampleData(trackIndex, outputBuffer!!, bufferInfo)
+                        }
+                        
+                        encoder.releaseOutputBuffer(outputBufferId, false)
+                        outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+                    }
                 }
-            } else {
-                val errorMessage = session.failStackTrace ?: "FFmpeg failed with return code: $returnCode"
-                Result.failure(Exception("FFmpeg failed: $errorMessage"))
             }
+            
+            // Signal end of stream
+            encoder.signalEndOfInputStream()
+            
+            // Get remaining encoded data
+            var bufferInfo = MediaCodec.BufferInfo()
+            var outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+            
+            while (outputBufferId != MediaCodec.INFO_TRY_AGAIN_LATER) {
+                if (outputBufferId >= 0) {
+                    val outputBuffer = encoder.getOutputBuffer(outputBufferId)
+                    if (bufferInfo.size != 0 && muxerStarted) {
+                        outputBuffer?.position(bufferInfo.offset)
+                        outputBuffer?.limit(bufferInfo.offset + bufferInfo.size)
+                        muxer.writeSampleData(trackIndex, outputBuffer!!, bufferInfo)
+                    }
+                    encoder.releaseOutputBuffer(outputBufferId, false)
+                }
+                outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 10000)
+            }
+            
+            // Clean up
+            encoder.stop()
+            encoder.release()
+            inputSurface.release()
+            
+            if (muxerStarted) {
+                muxer.stop()
+            }
+            muxer.release()
+            
+            Result.success(outputFile)
+            
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
     
-    private fun buildFFmpegCommand(
-        imageFiles: List<String>,
-        audioPath: String?,
-        subtitles: List<Subtitle>?,
-        config: VideoConfig
-    ): String {
-        val cmd = StringBuilder("-y ")
+    private fun applyTransitionEffect(
+        bitmap: Bitmap,
+        effect: TransitionEffect,
+        progress: Float,
+        hasPrevious: Boolean
+    ): Bitmap {
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        val paint = Paint().apply { isAntiAlias = true }
         
-        // Input images with duration
-        imageFiles.forEach { image ->
-            cmd.append("-loop 1 -t ${config.duration} -i \"$image\" ")
-        }
-        
-        // Complex filter for transitions
-        cmd.append("-filter_complex \"")
-        
-        val numImages = imageFiles.size
-        
-        when (config.transitionEffect) {
+        when (effect) {
             TransitionEffect.FADE -> {
-                // Simple fade transition between images
-                if (numImages > 1) {
-                    // Concatenate with crossfade
-                    val concatInputs = buildString {
-                        imageFiles.indices.forEach { i ->
-                            append("[${i}:v]fade=t=out:st=${config.duration - 0.5}:d=0.5[fade$i]; ")
-                        }
-                    }
-                    cmd.append(concatInputs)
-                    
-                    // Concatenate all faded clips
-                    val concatChain = imageFiles.indices.joinToString("") { "[fade$it]" }
-                    cmd.append("${concatChain}concat=n=$numImages:v=1:a=0[v]; ")
+                val alpha = if (hasPrevious) {
+                    (255 * progress).toInt()
                 } else {
-                    cmd.append("[0:v]format=yuv420p[v]; ")
+                    255
                 }
+                paint.alpha = alpha
             }
+            
             TransitionEffect.ZOOM -> {
-                // Zoom effect (puppet-style)
-                if (numImages > 1) {
-                    imageFiles.indices.forEach { i ->
-                        cmd.append("[${i}:v]scale=8000:-1,zoompan=z='min(zoom+0.0015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}[zoom$i]; ")
-                    }
-                    val concatChain = imageFiles.indices.joinToString("") { "[zoom$it]" }
-                    cmd.append("${concatChain}concat=n=$numImages:v=1:a=0[v]; ")
-                } else {
-                    cmd.append("[0:v]scale=8000:-1,zoompan=z='min(zoom+0.0015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${config.width}x${config.height}[v]; ")
-                }
+                val scale = 1.0f + (0.2f * progress) // Zoom in
+                canvas.scale(
+                    scale, scale,
+                    bitmap.width / 2f,
+                    bitmap.height / 2f
+                )
             }
+            
             TransitionEffect.SLIDE -> {
-                // Slide transition
-                if (numImages > 1) {
-                    imageFiles.indices.forEach { i ->
-                        if (i < numImages - 1) {
-                            cmd.append("[${i}:v]format=rgba,fade=t=out:st=${config.duration - 0.5}:d=0.5:alpha=1,setpts=PTS-STARTPTS[v$i]; ")
-                        } else {
-                            cmd.append("[${i}:v]setpts=PTS-STARTPTS[v$i]; ")
-                        }
-                    }
-                    val concatChain = imageFiles.indices.joinToString("") { "[v$it]" }
-                    cmd.append("${concatChain}concat=n=$numImages:v=1:a=0[v]; ")
-                } else {
-                    cmd.append("[0:v]format=yuv420p[v]; ")
-                }
+                val offsetX = bitmap.width * progress
+                canvas.translate(offsetX, 0f)
             }
+            
             TransitionEffect.NONE -> {
-                // Simple concatenation
-                if (numImages > 1) {
-                    val concatChain = imageFiles.indices.joinToString(" ") { "[${it}:v]" }
-                    cmd.append("$concatChain concat=n=$numImages:v=1:a=0[v]; ")
-                } else {
-                    cmd.append("[0:v]format=yuv420p[v]; ")
-                }
+                // No transition effect
             }
         }
         
-        // Add subtitles if provided
-        if (!subtitles.isNullOrEmpty()) {
-            val subtitleText = subtitles.joinToString("\\n") { it.text.replace("'", "'\\''") }
-            cmd.append("[v]drawtext=text='$subtitleText':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=h-th-10[outv]")
-        } else {
-            cmd.append("[v]format=yuv420p[outv]")
+        return result
+    }
+    
+    private fun addSubtitles(
+        bitmap: Bitmap,
+        subtitles: List<Subtitle>,
+        currentFrame: Int,
+        totalFrames: Int,
+        imageIndex: Int
+    ): Bitmap {
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        
+        val currentTime = (imageIndex * totalFrames + currentFrame) / 30f // Assuming 30fps
+        
+        subtitles.forEach { subtitle ->
+            if (currentTime in subtitle.startTime..subtitle.endTime) {
+                val paint = Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 72f
+                    isAntiAlias = true
+                    setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
+                }
+                
+                // Draw text at bottom of frame
+                val textWidth = paint.measureText(subtitle.text)
+                canvas.drawText(
+                    subtitle.text,
+                    (bitmap.width - textWidth) / 2f,
+                    bitmap.height - 100f,
+                    paint
+                )
+            }
         }
         
-        cmd.append("\" ")
-        
-        // Map video
-        cmd.append("-map \"[outv]\" ")
-        
-        // Add audio if provided
-        if (audioPath != null) {
-            cmd.append("-i \"$audioPath\" ")
-            cmd.append("-shortest ") // Match video length to audio
-            cmd.append("-c:a aac ")
-            cmd.append("-b:a 128k ")
-        }
-        
-        // Output settings
-        cmd.append("-c:v libx264 ")
-        cmd.append("-preset ultrafast ")
-        cmd.append("-b:v ${config.bitrate} ")
-        cmd.append("-r ${config.frameRate} ")
-        cmd.append("-s ${config.width}x${config.height} ")
-        cmd.append("-pix_fmt yuv420p ")
-        cmd.append("\"${config.outputPath}\"")
-        
-        return cmd.toString()
+        return result
     }
 }
