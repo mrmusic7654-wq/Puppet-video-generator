@@ -289,8 +289,8 @@ class GeminiApiServiceEnhanced(private val apiKey: String) {
     private fun adjustDurations(script: PuppetScript, totalDuration: Float): PuppetScript {
         if (script.scenes.isEmpty()) return script
         
-        // Calculate current total
-        val currentTotal = script.scenes.sumOf { it.duration }
+        // Calculate current total - use fold to avoid sumOf type ambiguity with Float
+        val currentTotal = script.scenes.fold(0f) { acc, scene -> acc + scene.duration }
         
         if (currentTotal == 0f) {
             // If no durations set, distribute evenly
