@@ -8,6 +8,7 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import java.util.ArrayList
 
 class PuppetTracker(context: Context) {
     
@@ -26,41 +27,34 @@ class PuppetTracker(context: Context) {
     )
     
     init {
-        setupFaceDetector(context)
-        setupPoseLandmarker(context)
-    }
-    
-    private fun setupFaceDetector(context: Context) {
         try {
-            val baseOptions = BaseOptions.builder()
+            val baseOptionsFace = BaseOptions.builder()
                 .setModelAssetPath("face_detection_short_range.tflite")
                 .setDelegate(Delegate.GPU)
                 .build()
             
-            val options = FaceDetector.FaceDetectorOptions.builder()
-                .setBaseOptions(baseOptions)
+            val faceOptions = FaceDetector.FaceDetectorOptions.builder()
+                .setBaseOptions(baseOptionsFace)
                 .setMinDetectionConfidence(0.5f)
                 .build()
             
-            faceDetector = FaceDetector.createFromOptions(context, options)
+            faceDetector = FaceDetector.createFromOptions(context, faceOptions)
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-    
-    private fun setupPoseLandmarker(context: Context) {
+        
         try {
-            val baseOptions = BaseOptions.builder()
+            val baseOptionsPose = BaseOptions.builder()
                 .setModelAssetPath("pose_landmarker_lite.task")
                 .setDelegate(Delegate.GPU)
                 .build()
             
-            val options = PoseLandmarker.PoseLandmarkerOptions.builder()
-                .setBaseOptions(baseOptions)
+            val poseOptions = PoseLandmarker.PoseLandmarkerOptions.builder()
+                .setBaseOptions(baseOptionsPose)
                 .setMinPoseDetectionConfidence(0.5f)
                 .build()
             
-            poseLandmarker = PoseLandmarker.createFromOptions(context, options)
+            poseLandmarker = PoseLandmarker.createFromOptions(context, poseOptions)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -69,22 +63,23 @@ class PuppetTracker(context: Context) {
     fun detectFace(bitmap: Bitmap): FaceData? {
         return try {
             val mpImage = BitmapImageBuilder(bitmap).build()
-            val result = faceDetector?.detect(mpImage)
+            val result = faceDetector?.detect(mpImage) ?: return null
+            val detections = result.detections()
             
-            val detection = result?.detections()?.firstOrNull() ?: return null
+            if (detections.isEmpty()) return null
             
+            val detection = detections[0]
             val boundingBox = detection.boundingBox()
             
-            // Convert keypoints manually - NO flatMap/map
-            val keypointsList = mutableListOf<PointF>()
+            val keypointsList = ArrayList<PointF>()
             val keypoints = detection.keypoints()
-            for (kp in keypoints) {
-                val point = PointF(kp.x(), kp.y())
-                keypointsList.add(point)
+            for (i in 0 until keypoints.size) {
+                val kp = keypoints[i]
+                keypointsList.add(PointF(kp.x(), kp.y()))
             }
             
-            val confidence = if (detection.categories().isNotEmpty()) {
-                detection.categories().first().score()
+            val confidence = if (detection.categories().size > 0) {
+                detection.categories()[0].score()
             } else {
                 0.5f
             }
@@ -103,15 +98,17 @@ class PuppetTracker(context: Context) {
     fun detectPose(bitmap: Bitmap): PoseData? {
         return try {
             val mpImage = BitmapImageBuilder(bitmap).build()
-            val result = poseLandmarker?.detect(mpImage)
+            val result = poseLandmarker?.detect(mpImage) ?: return null
+            val allLandmarks = result.landmarks()
             
-            val landmarks = result?.landmarks()?.firstOrNull() ?: return null
+            if (allLandmarks.isEmpty()) return null
             
-            // Convert landmarks manually - NO flatMap/map
-            val pointsList = mutableListOf<PointF>()
-            for (landmark in landmarks) {
-                val point = PointF(landmark.x(), landmark.y())
-                pointsList.add(point)
+            val landmarks = allLandmarks[0]
+            val pointsList = ArrayList<PointF>()
+            
+            for (i in 0 until landmarks.size) {
+                val lm = landmarks[i]
+                pointsList.add(PointF(lm.x(), lm.y()))
             }
             
             PoseData(
@@ -130,12 +127,7 @@ class PuppetTracker(context: Context) {
         expression: String
     ): PuppetAnimation {
         if (faceData == null || poseData == null) {
-            return PuppetAnimation(
-                mouthOpen = false,
-                eyeScale = 1.0f,
-                headTilt = 0f,
-                bodyRotation = 0f
-            )
+            return PuppetAnimation(false, 1.0f, 0f, 0f)
         }
         
         return try {
@@ -151,14 +143,12 @@ class PuppetTracker(context: Context) {
             var headTilt = 0f
             var bodyRotation = 0f
             
-            // Calculate head tilt from pose landmarks
             if (poseData.landmarks.size > 11) {
                 val nose = poseData.landmarks[0]
                 val leftShoulder = poseData.landmarks[11]
                 headTilt = nose.x - leftShoulder.x
             }
             
-            // Calculate body rotation
             if (poseData.landmarks.size > 12) {
                 val leftShoulder = poseData.landmarks[11]
                 val rightShoulder = poseData.landmarks[12]
@@ -168,20 +158,10 @@ class PuppetTracker(context: Context) {
                 }
             }
             
-            PuppetAnimation(
-                mouthOpen = mouthOpen,
-                eyeScale = eyeScale,
-                headTilt = headTilt,
-                bodyRotation = bodyRotation
-            )
+            PuppetAnimation(mouthOpen, eyeScale, headTilt, bodyRotation)
         } catch (e: Exception) {
             e.printStackTrace()
-            PuppetAnimation(
-                mouthOpen = false,
-                eyeScale = 1.0f,
-                headTilt = 0f,
-                bodyRotation = 0f
-            )
+            PuppetAnimation(false, 1.0f, 0f, 0f)
         }
     }
     
