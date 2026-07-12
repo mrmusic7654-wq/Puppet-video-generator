@@ -113,8 +113,8 @@ dependencies {
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   
-  // FFmpeg-Kit for video processing
-  implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
+  // FFmpeg-Kit for video processing (Full GPL version with all codecs)
+  implementation("com.arthenica:ffmpeg-kit-full-gpl:6.0-2")
   
   // MediaPipe for face/pose detection
   implementation("com.google.mediapipe:tasks-vision:0.10.14")
