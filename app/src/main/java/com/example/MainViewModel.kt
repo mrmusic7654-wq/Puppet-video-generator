@@ -204,14 +204,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val poseData = puppetTracker.detectPose(bitmap)
                     
                     val expression = script?.scenes?.getOrNull(index)?.expression ?: "neutral"
-                    val animation = if (faceData != null && poseData != null) {
+                    val animation: PuppetAnimation = if (faceData != null && poseData != null) {
                         puppetTracker.createPuppetAnimation(faceData, poseData, expression)
                     } else {
                         PuppetAnimation(
                             mouthOpen = false,
                             eyeScale = 1.0f,
                             headTilt = 0f,
-                            bodyRotation = 0f
+                            bodyRotation = 0f,
+                            scale = 1.0f,
+                            position = android.graphics.PointF(0f, 0f)
                         )
                     }
                     
