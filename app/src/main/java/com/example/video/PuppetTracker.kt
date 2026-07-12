@@ -3,12 +3,12 @@ package com.example.video
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PointF
+import com.example.data.PuppetAnimation
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
-import java.util.ArrayList
 
 class PuppetTracker(context: Context) {
     
@@ -71,14 +71,18 @@ class PuppetTracker(context: Context) {
             val detection = detections[0]
             val boundingBox = detection.boundingBox()
             
-            val keypointsList = ArrayList<PointF>()
-            val keypoints = detection.keypoints()
-            for (i in 0 until keypoints.size) {
-                val kp = keypoints[i]
-                keypointsList.add(PointF(kp.x(), kp.y()))
+            // Get keypoints from Optional - MediaPipe returns Optional type
+            val keypointsOptional = detection.keypoints()
+            val keypointsList = mutableListOf<PointF>()
+            
+            if (keypointsOptional.isPresent) {
+                val keypoints = keypointsOptional.get()
+                for (kp in keypoints) {
+                    keypointsList.add(PointF(kp.x(), kp.y()))
+                }
             }
             
-            val confidence = if (detection.categories().size > 0) {
+            val confidence = if (detection.categories().isNotEmpty()) {
                 detection.categories()[0].score()
             } else {
                 0.5f
@@ -104,10 +108,9 @@ class PuppetTracker(context: Context) {
             if (allLandmarks.isEmpty()) return null
             
             val landmarks = allLandmarks[0]
-            val pointsList = ArrayList<PointF>()
+            val pointsList = mutableListOf<PointF>()
             
-            for (i in 0 until landmarks.size) {
-                val lm = landmarks[i]
+            for (lm in landmarks) {
                 pointsList.add(PointF(lm.x(), lm.y()))
             }
             
@@ -127,7 +130,7 @@ class PuppetTracker(context: Context) {
         expression: String
     ): PuppetAnimation {
         if (faceData == null || poseData == null) {
-            return PuppetAnimation(false, 1.0f, 0f, 0f)
+            return PuppetAnimation(false, 1.0f, 0f, 0f, 1.0f, android.graphics.PointF(0f, 0f))
         }
         
         return try {
@@ -158,10 +161,10 @@ class PuppetTracker(context: Context) {
                 }
             }
             
-            PuppetAnimation(mouthOpen, eyeScale, headTilt, bodyRotation)
+            PuppetAnimation(mouthOpen, eyeScale, headTilt, bodyRotation, 1.0f, android.graphics.PointF(0f, 0f))
         } catch (e: Exception) {
             e.printStackTrace()
-            PuppetAnimation(false, 1.0f, 0f, 0f)
+            PuppetAnimation(false, 1.0f, 0f, 0f, 1.0f, android.graphics.PointF(0f, 0f))
         }
     }
     
@@ -174,10 +177,3 @@ class PuppetTracker(context: Context) {
         }
     }
 }
-
-data class PuppetAnimation(
-    val mouthOpen: Boolean,
-    val eyeScale: Float,
-    val headTilt: Float,
-    val bodyRotation: Float
-)
